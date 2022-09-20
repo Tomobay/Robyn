@@ -6,75 +6,6 @@
 ####################################################################
 #' Response Function
 #'
-#' \code{robyn_response()} returns the response for a given
-#' spend level of a given \code{paid_media_vars} from a selected model
-#' result and selected model build (initial model, refresh model, etc.).
-#'
-#' @inheritParams robyn_allocator
-#' @param media_metric A character. Selected media variable for the response.
-#' Must be one value from paid_media_spends, paid_media_vars or organic_vars
-#' @param metric_value Numeric. Desired metric value to return a response for.
-#' @param dt_hyppar A data.frame. When \code{robyn_object} is not provided, use
-#' \code{dt_hyppar = OutputCollect$resultHypParam}. It must be provided along
-#' \code{select_model}, \code{dt_coef} and \code{InputCollect}.
-#' @param dt_coef A data.frame. When \code{robyn_object} is not provided, use
-#' \code{dt_coef = OutputCollect$xDecompAgg}. It must be provided along
-#' \code{select_model}, \code{dt_hyppar} and \code{InputCollect}.
-#' @examples
-#' \dontrun{
-#' # Having InputCollect and OutputCollect objects
-#'
-#' # Get marginal response (mResponse) and marginal ROI (mROI) for
-#' # the next 1k on 80k for search_S
-#' spend1 <- 80000
-#' Response1 <- robyn_response(
-#'   InputCollect = InputCollect,
-#'   OutputCollect = OutputCollect,
-#'   media_metric = "search_S",
-#'   metric_value = spend1
-#' )$response
-#' # Get ROI for 80k
-#' Response1 / spend1 # ROI for search 80k
-#'
-#' # Get response for 81k
-#' spend2 <- spend1 + 1000
-#' Response2 <- robyn_response(
-#'   InputCollect = InputCollect,
-#'   OutputCollect = OutputCollect,
-#'   media_metric = "search_S",
-#'   metric_value = spend2
-#' )$response
-#'
-#' # Get ROI for 81k
-#' Response2 / spend2 # ROI for search 81k
-#' # Get marginal response (mResponse) for the next 1k on 80k
-#' Response2 - Response1
-#' # Get marginal ROI (mROI) for the next 1k on 80k
-#' (Response2 - Response1) / (spend2 - spend1)
-#'
-#' # Example of getting paid media exposure response curves
-#' imps <- 1000000
-#' response_imps <- robyn_response(
-#'   InputCollect = InputCollect,
-#'   OutputCollect = OutputCollect,
-#'   media_metric = "facebook_I",
-#'   metric_value = imps
-#' )$response
-#' response_per_1k_imps <- response_imps / imps * 1000
-#' response_per_1k_imps
-#'
-#' # Get response for 80k for search_S from the a certain model SolID
-#' # in the current model output in the global environment
-#' robyn_response(
-#'   InputCollect = InputCollect,
-#'   OutputCollect = OutputCollect,
-#'   media_metric = "search_S",
-#'   metric_value = 80000,
-#'   dt_hyppar = OutputCollect$resultHypParam,
-#'   dt_coef = OutputCollect$xDecompAgg
-#' )
-#' }
-#' @return List. Response value and plot. Class: \code{robyn_response}.
 #' @export
 robyn_response <- function(InputCollect = NULL,
                            OutputCollect = NULL,
@@ -185,7 +116,7 @@ robyn_response <- function(InputCollect = NULL,
     ))
   }
 
-  if (is.nan(metric_value)) metric_value <- NULL
+  if (any(is.nan(metric_value))) metric_value <- NULL
   check_metric_value(metric_value, media_metric)
 
   ## Transform exposure to spend when necessary
@@ -279,3 +210,65 @@ robyn_response <- function(InputCollect = NULL,
     plot = p_res
   ))
 }
+
+robyn_response_all_channels <- function(
+    ratios, channels, InputCollect, OutputCollect,
+    select_model, date_min = NULL, date_max = NULL) {
+  dt_mod <- InputCollect$dt_mod
+  # take
+  adstocked_values <- get_adstock_value(
+    InputCollect, OutputCollect, select_model,
+    date_min = date_min, date_max = date_max)
+  return <- mapply(
+    function(channel, ratio) {
+      fit <- Robyn::robyn_response(
+        InputCollect = InputCollect,
+        OutputCollect = OutputCollect,
+        media_metric = channel,
+        metric_value = adstocked_values[, channel] * ratio,
+        select_model = select_model,
+        quiet = T)
+      return(sum(fit$response))
+    }, channels, ratios)
+  return(return)
+}
+
+get_adstock_value <- function(
+    InputCollect,
+    OutputCollect,
+    select_model,
+    date_min = NULL,
+    date_max = NULL) {
+
+  adstock <- InputCollect$adstock
+  paid_media_spends <- InputCollect$paid_media_spends
+  media_order <- order(paid_media_spends)
+  mediaSpendSorted <- paid_media_spends[media_order]
+  dt_hyppar <- filter(OutputCollect$resultHypParam, solID == select_model)
+
+  if (is.null(date_min)) date_min <- min(InputCollect$dt_mod$ds)
+  if (is.null(date_max)) date_max <- max(InputCollect$dt_mod$ds)
+  if (date_min < min(InputCollect$dt_mod$ds)) date_min <- min(InputCollect$dt_mod$ds)
+  if (date_max > max(InputCollect$dt_mod$ds)) date_max <- max(InputCollect$dt_mod$ds)
+  # spend in total period
+  histSpendB <- select(InputCollect$dt_mod, any_of(mediaSpendSorted))
+  getAdstockHypPar <- get_adstock_params(InputCollect, dt_hyppar)
+
+  if(adstock == "geometric") {
+    adstock_vec <- mapply(function(x, theta) {
+      return <- adstock_geometric(x, theta)
+      return(return$x_decayed)}
+      , histSpendB, getAdstockHypPar)}
+  else {
+    weibull_type <- if(adstock == "weibull_cdf") "CDF" else "PDF"
+    adstock_vec <- mapply(function(x, shape, scale) {
+      return <- adstock_weibull(x, shape, scale, weibull_type)
+      return(return$x_decayed)}
+      , histSpendB, getAdstockHypPar)
+  }
+  # adstock value
+  adstock_vec <- adstock_vec[InputCollect$dt_mod$ds >= date_min &
+                               InputCollect$dt_mod$ds <= date_max, ]
+  return(adstock_vec)
+}
+

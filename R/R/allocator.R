@@ -181,7 +181,7 @@ robyn_allocator <- function(robyn_object = NULL,
   channel_constr_up <- channel_constr_up[media_order]
 
   # Hyper-parameters and results
-  dt_hyppar <- filter(OutputCollect$resultHypParam, .data$solID == select_model)
+  dt_hyppar <- filter(OutputCollect$resultHypParam, solID == select_model)
   dt_bestCoef <- filter(OutputCollect$xDecompAgg, .data$solID == select_model, .data$rn %in% paid_media_spends)
 
   ## Sort table and get filter for channels mmm coef reduced to 0
@@ -616,4 +616,128 @@ get_hill_params <- function(InputCollect, OutputCollect, dt_hyppar, dt_coef, med
     gammaTrans = gammaTrans,
     coefsFiltered = coefsFiltered
   ))
+}
+
+#' \code{robyn_allocator_historical()} function returns a new split of media
+#' variable spends that maximizes the total media response.
+#'
+#' @param InputCollect List. Contains all input parameters for the model.
+#' Required when \code{robyn_object} is not provided.
+#' @param OutputCollect List. Containing all model result.
+#' Required when \code{robyn_object} is not provided.
+#' @param select_model Character. A model \code{SolID}. When \code{robyn_object}
+#' is provided, \code{select_model} defaults to the already selected \code{SolID}. When
+#' \code{robyn_object} is not provided, \code{select_model} must be provided with
+#' \code{InputCollect} and \code{OutputCollect}, and must be one of
+#' \code{OutputCollect$allSolutions}.
+#' @param channels channels to optimize
+#' @param channel_constr_low,channel_constr_up Numeric vectors. The lower and upper bounds
+#' for each paid media variable when maximizing total media response. For example,
+#' \code{channel_constr_low = 0.7} means minimum spend of the variable is 70% of historical
+#' average, using non-zero spend values, within \code{date_min} and \code{date_max} date range.
+#' Both constrains must be length 1 (same for all values) OR same length and order as
+#' \code{paid_media_spends}. It's not recommended to 'exaggerate' upper bounds, especially
+#' if the new level is way higher than historical level. Lower bound must be >=0.01,
+#' and upper bound should be < 5.
+#' @param new_budget_ratio numeric. Value which you want to increase or decrease 
+#' from current budget. deafult 1
+#' @param date_min,date_max Character/Date. Date range to calculate mean (of non-zero
+#' spends) and total spends. Default will consider all dates within modeled window.
+#' Length must be 1 for both parameters.
+#' @examples
+#' \dontrun{robyn_allocator_historical(
+#' new_budget_ratio = 0.6, # new budget
+#' channels, # channels to optimize
+#' channel_constr_low = 0.5, # lower band
+#' channel_constr_up = 1, # upper band
+#' InputCollect, # Input Collect
+#' OutputCollect, # OutputCollect
+#' select_model, # selected_model
+#' date_min = date_min, # starting date to optimize
+#' date_max = date_max # end date to optimize
+#' )}
+
+#' @return A list object containing allocator result.
+#' fit: solnp output
+#' optim_result: optimized share
+#' expected_spend_total: optimized expected spend
+#' init_spend_total: initial spend 
+#' original_expected_spend_toal: expected spend with current spend share
+#' expected_return: optimized expected return
+#' init_return" initial return
+#' original_expected_return: expected return with current spend share
+
+robyn_allocator_historical <- function(
+    new_budget_ratio = 1, # new budget
+    channels, # channels to optimize
+    channel_constr_low = 1, # lower band
+    channel_constr_up = 1, # upper band
+    InputCollect, # Input Collect
+    OutputCollect, # OutputCollect
+    select_model, # selected_model
+    date_min = NULL, # starting date to optimize
+    date_max = NULL # end date to optimize
+) {
+  if (length(channel_constr_low) == 1) {
+    channel_constr_low <- rep(channel_constr_low, length(channels))
+  }
+  if (length(channel_constr_up) == 1) {
+    channel_constr_up <- rep(channel_constr_up, length(channels))
+  }
+  dt_mod <- InputCollect$dt_mod
+  if (is.null(date_min)) date_min <- min(dt_mod$ds)
+  if (is.null(date_max)) date_max <- max(dt_mod$ds)
+  init_spend <- mapply(sum, dt_mod[dt_mod$ds >= date_min &
+                                     dt_mod$ds <= date_max, channels])
+  x0 <- rep(1 * new_budget_ratio, length(channels)) # initial ratio
+  fit <- solnp(
+    pars = x0,
+    fun = function(x0, channels) {
+      obj <- -sum(robyn_response_all_channels(
+        ratios=x0,
+        channels = channels,
+        InputCollect = InputCollect,
+        OutputCollect = OutputCollect,
+        select_model = select_model,
+        date_min = date_min,
+        date_max = date_max)
+      )
+    },
+    eqfun = function(x0, channels) {
+      constr <- sum(x0 * init_spend)
+      return(constr)
+    },
+    eqB = c(sum(new_budget_ratio * init_spend)),
+    channels = channels,
+    LB = channel_constr_low,
+    UB = channel_constr_up,
+    control = list(delta = 1e-4, tol = 1e-6, nfuneval = 20))
+  optim_result <- fit$pars
+  names(optim_result) <- channels
+
+  init_return <- sum(robyn_response_all_channels(x0,
+                                                 channels,
+                                                 InputCollect,
+                                                 OutputCollect,
+                                                 select_model,
+                                                 date_min = date_min,
+                                                 date_max = date_max))
+
+  original_expected_return <- sum(robyn_response_all_channels(x0 * new_budget_ratio,
+                                                 channels,
+                                                 InputCollect,
+                                                 OutputCollect,
+                                                 select_model,
+                                                 date_min = date_min,
+                                                 date_max = date_max))
+  return <- list(fit = fit,
+                 optim_result = optim_result,
+                 expected_spend_total = init_spend * fit$pars,
+                 init_spend_total = init_spend,
+                 original_expected_spend_total = init_spend * new_budget_ratio,
+                 expected_return = -tail(fit$values,1),
+                 init_return = init_return,
+                 original_expected_return = original_expected_return
+                 )
+  return(return)
 }
