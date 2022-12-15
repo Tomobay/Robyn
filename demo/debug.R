@@ -15,9 +15,9 @@ context_signs = c("default", "default")
 paid_media_vars = c("tv_S", "ooh_S", 	"print_S", "facebook_I", "search_clicks_P")
 paid_media_signs = c("positive", "positive", "positive", "positive", "positive")
 paid_media_spends = c("tv_S", "ooh_S",	"print_S", "facebook_S", "search_S")
-organic_vars = c("newsletter")
-organic_signs = c("positive")
-factor_vars = c("events")
+organic_vars = "newsletter"
+organic_signs = "positive"
+factor_vars = "events"
 cores = 8
 window_start = "2016-11-23"
 window_end = "2018-08-22"
@@ -28,7 +28,7 @@ iterations = 100
 trials = 2
 calibration_input = NULL
 json_file = NULL
-#InputCollect = NULL
+InputCollect = NULL
 #hyperparameters = NULL
 
 ## debug robyn_run
@@ -42,14 +42,15 @@ outputs = FALSE
 quiet = FALSE
 add_penalty_factor = FALSE
 cores = 6
-iterations = 200
+iterations = 500
 trials = 1
 intercept_sign = "non_negative"
 nevergrad_algo = "TwoPointsDE"
+json_file = NULL
 
 ## debug robyn_train
 args(robyn_train)
-hyper_collect = hyps
+#hyper_collect
 add_penalty_factor = FALSE
 dt_hyper_fixed = NULL
 lambda_control = 1
@@ -61,33 +62,67 @@ quiet = FALSE
 ## debug robyn_mmm
 args(robyn_mmm)
 #InputCollect
-hyper_collect = hyps
+#hyper_collect
 add_penalty_factor = FALSE
-iterations = InputCollect$iterations
+iterations = 500
 lambda.n = 100
 lambda_control = 1
 refresh = FALSE
 seed = 123L
 quiet = FALSE
 
+## debug model_decomp
+coefs = mod_out$coefs
+y_pred = mod_out$y_pred
+
+## debug robyn_calibrate
+# calibration_input = calibration_input
+df_raw = dt_mod
+#hypParamSam = hypParamSam
+wind_start = rollingWindowStartWhich
+wind_end = rollingWindowEndWhich
+dayInterval = InputCollect$dayInterval
+dt_modAdstocked = dt_modAdstocked
+#adstock = adstock
+xDecompVec = decompCollect$xDecompVec
+coefs = decompCollect$coefsOutCat
+
+
 ## debug robyn_outputs
 args(robyn_outputs)
 #InputCollect
 #OutputModels
-pareto_fronts = 1
+pareto_fronts = "auto"
 calibration_constraint = 0.1
 plot_folder = robyn_object
 plot_folder_sub = NULL
 plot_pareto = TRUE
 csv_out = "pareto"
 clusters = TRUE
-selected = "clusters"
+select_model = "clusters"
 ui = FALSE
 export = TRUE
 quiet = FALSE
 
 ## debug robyn_pareto
 args(robyn_pareto)
+
+#InputCollect
+#OutputModels
+pareto_fronts = "auto"
+calibration_constraint = 0.1
+quiet = FALSE
+
+## debug robyn_clusters
+input = OutputCollect
+dep_var_type = InputCollect$dep_var_type
+all_media = NULL
+k = "auto"
+limit = 1
+weights = rep(1, 3)
+dim_red = "PCA"
+quiet = FALSE
+export = TRUE
 
 ## debug robyn_response
 args(robyn_response)
@@ -102,15 +137,22 @@ dt_coef = xDecompAggPar
 
 ## debug robyn_refresh
 args(robyn_refresh)
+robyn_object = NULL
+# json_file
 # robyn_object
-plot_folder_sub = NULL
 dt_input = dt_simulated_weekly
 dt_holidays = dt_prophet_holidays
-refresh_steps = 14
+refresh_steps = 3
 refresh_mode = "manual" # "auto", "manual"
 refresh_iters = 100
 refresh_trials = 2
 plot_pareto = TRUE
+plot_folder = NULL
+version_prompt = FALSE
+export = TRUE
+#calibration_input
+
+
 
 ## debug robyn_allocator
 args(robyn_allocator)

@@ -42,7 +42,7 @@ robyn_converge <- function(OutputModels, n_cuts = 20, sd_qtref = 3, med_lowb = 2
   stopifnot(n_cuts > min(c(sd_qtref, med_lowb)) + 1)
 
   # Gather all trials
-  get_lists <- as.logical(grepl("trial", names(OutputModels)) * sapply(OutputModels, is.list))
+  get_lists <- as.logical(grepl("trial", names(OutputModels)) * unlist(lapply(OutputModels, is.list)))
   OutModels <- OutputModels[get_lists]
   for (i in seq_along(OutModels)) {
     if (i == 1) df <- data.frame()
@@ -101,19 +101,20 @@ robyn_converge <- function(OutputModels, n_cuts = 20, sd_qtref = 3, med_lowb = 2
       mutate(median = signif(median, 2))
     last.qt <- tail(temp.df, 1)
     greater <- ">" # intToUtf8(8814)
-    temp <- glued(paste(
-      "{error_type} {did}converged: sd@qt.{quantile} {sd} {symb_sd} {sd_threh} &",
-      "|med@qt.{quantile}| {qtn_median} {symb_med} {med_threh}"
-    ),
-    error_type = last.qt$error_type,
-    did = ifelse(last.qt$flag_sd & last.qt$flag_med, "", "NOT "),
-    sd = signif(last.qt$last_sd, 2),
-    symb_sd = ifelse(last.qt$flag_sd, "<=", greater),
-    sd_threh = signif(last.qt$first_sd_avg, 2),
-    quantile = n_cuts,
-    qtn_median = signif(last.qt$last_med, 2),
-    symb_med = ifelse(last.qt$flag_med, "<=", greater),
-    med_threh = signif(last.qt$med_thres, 2)
+    temp <- glued(
+      paste(
+        "{error_type} {did}converged: sd@qt.{quantile} {sd} {symb_sd} {sd_threh} &",
+        "|med@qt.{quantile}| {qtn_median} {symb_med} {med_threh}"
+      ),
+      error_type = last.qt$error_type,
+      did = ifelse(last.qt$flag_sd & last.qt$flag_med, "", "NOT "),
+      sd = signif(last.qt$last_sd, 2),
+      symb_sd = ifelse(last.qt$flag_sd, "<=", greater),
+      sd_threh = signif(last.qt$first_sd_avg, 2),
+      quantile = n_cuts,
+      qtn_median = signif(last.qt$last_med, 2),
+      symb_med = ifelse(last.qt$flag_med, "<=", greater),
+      med_threh = signif(last.qt$med_thres, 2)
     )
     conv_msg <- c(conv_msg, temp)
   }

@@ -2,6 +2,7 @@
 ### The Open Source Marketing Mix Model Package from Meta Marketing Science
 
 [![CRAN\_Status\_Badge](https://www.r-pkg.org/badges/version/Robyn)](https://cran.r-project.org/package=Robyn) [![website](https://img.shields.io/badge/site-Robyn-blue.svg)](https://facebookexperimental.github.io/Robyn/) [![facebook](https://img.shields.io/badge/group-Facebook-blue.svg)](https://www.facebook.com/groups/robynmmm/)
+[![CodeFactor](https://www.codefactor.io/repository/github/facebookexperimental/robyn/badge)](https://www.codefactor.io/repository/github/facebookexperimental/robyn)
 ---
 
 ## Introduction
@@ -64,8 +65,7 @@ Meta's Robyn is MIT licensed, as found in the LICENSE file.
 
 ## Contact
 
-* gufeng@fb.com, Gufeng Zhou, Marketing Science Partner
-* leonelsentana@fb.com, Leonel Sentana, Marketing Science Partner
-* igorskokan@fb.com, Igor Skokan, Marketing Science Partner
-* bernardolares@fb.com, Bernardo Lares, Marketing Science Partner
-* kylegoldberg@fb.com, Kyle Goldberg, Marketing Science Partner
+* gufeng@meta.com, Gufeng Zhou, Marketing Science Partner
+* leonelsentana@meta.com, Leonel Sentana, Marketing Science Partner
+* igorskokan@meta.com, Igor Skokan, Marketing Science Partner
+* bernardolares@meta.com, Bernardo Lares, Marketing Science Partner

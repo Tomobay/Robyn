@@ -17,7 +17,6 @@ robyn_plots <- function(InputCollect, OutputCollect, export = TRUE) {
   all_plots <- list()
 
   if (!hyper_fixed) {
-
     ## Prophet
     if (!is.null(InputCollect$prophet_vars) && length(InputCollect$prophet_vars) > 0 ||
       !is.null(InputCollect$factor_vars) && length(InputCollect$factor_vars) > 0) {
@@ -30,9 +29,7 @@ robyn_plots <- function(InputCollect, OutputCollect, export = TRUE) {
       ) +
         geom_line(color = "steelblue") +
         facet_wrap(~ .data$variable, scales = "free", ncol = 1) +
-        labs(title = "Prophet decomposition") +
-        xlab(NULL) +
-        ylab(NULL) +
+        labs(title = "Prophet decomposition", x = NULL, y = NULL) +
         theme_lares() +
         scale_y_abbr()
 
@@ -263,7 +260,7 @@ robyn_onepagers <- function(InputCollect, OutputCollect, select_model = NULL, qu
     if (!quiet) message(paste(">> Plotting", count_mod_out, "selected models on 1 core (MacOS fallback)..."))
   }
 
-  if (!quiet & count_mod_out > 0) {
+  if (!quiet && count_mod_out > 0) {
     pbplot <- txtProgressBar(min = 0, max = count_mod_out, style = 3)
   }
   temp <- OutputCollect$allPareto$plotDataCollect
@@ -471,12 +468,52 @@ robyn_onepagers <- function(InputCollect, OutputCollect, select_model = NULL, qu
         theme_lares() +
         labs(x = "Fitted", y = "Residual", title = "Fitted vs. Residual")
 
+      ## 7. Immediate vs carryover
+      df_imme_caov <- temp[[sid]]$plot7data
+      p7 <- df_imme_caov %>%
+        mutate(type = factor(.data$type, levels = c("Carryover", "Immediate"))) %>%
+        ggplot(aes(
+          x = .data$percentage, y = .data$channels, fill = reorder(.data$type, as.integer(.data$type)),
+          label = paste0(round(.data$percentage * 100), "%")
+        )) +
+        geom_bar(stat = "identity", width = 0.5) +
+        geom_text(position = position_stack(vjust = 0.5)) +
+        scale_fill_manual(values = c("Immediate" = "#59B3D2", "Carryover" = "coral")) +
+        scale_x_percent() +
+        theme_lares(legend = "top", grid = "Xx") +
+        labs(
+          x = "% Response", y = NULL, fill = NULL,
+          title = "Immediate vs. Carryover Response Percentage"
+        )
+
+      ## 8. Bootstrapped ROI/CPA with CIs
+      if ("ci_low" %in% colnames(xDecompAgg)) {
+        metric <- ifelse(InputCollect$dep_var_type == "conversion", "CPA", "ROI")
+        p8 <- xDecompAgg %>%
+          filter(!is.na(.data$ci_low), .data$solID == sid) %>%
+          select(.data$rn, .data$solID, .data$boot_mean, .data$ci_low, .data$ci_up) %>%
+          ggplot(aes(x = .data$rn, y = .data$boot_mean)) +
+          geom_point(size = 3) +
+          geom_text(aes(label = signif(.data$boot_mean, 2)), vjust = -0.7, size = 3.3) +
+          geom_text(aes(y = .data$ci_low, label = signif(.data$ci_low, 2)), hjust = 1.1, size = 2.8) +
+          geom_text(aes(y = .data$ci_up, label = signif(.data$ci_up, 2)), hjust = -0.1, size = 2.8) +
+          geom_errorbar(aes(ymin = .data$ci_low, ymax = .data$ci_up), width = 0.25) +
+          labs(title = paste("In-cluster bootstrapped", metric, "with 95% CI & mean"), x = NULL, y = NULL) +
+          coord_flip() +
+          theme_lares()
+        if (metric == "ROI") {
+          p8 <- p8 + geom_hline(yintercept = 1, alpha = 0.5, colour = "grey50", linetype = "dashed")
+        }
+      } else {
+        p8 <- lares::noPlot("No bootstrap results")
+      }
+
       ## Aggregate one-pager plots and export
       ver <- as.character(utils::packageVersion("Robyn"))
       rver <- utils::sessionInfo()$R.version
       onepagerTitle <- sprintf("One-pager for Model ID: %s", sid)
       onepagerCaption <- sprintf("Robyn v%s [R-%s.%s]", ver, rver$major, rver$minor)
-      pg <- wrap_plots(p2, p5, p1, p4, p3, p6, ncol = 2) +
+      pg <- wrap_plots(p2, p5, p1, p8, p3, p7, p4, p6, ncol = 2) +
         plot_annotation(
           title = onepagerTitle, subtitle = errors,
           theme = theme_lares(background = "white"),
@@ -491,18 +528,18 @@ robyn_onepagers <- function(InputCollect, OutputCollect, select_model = NULL, qu
           dpi = 400, width = 17, height = 19
         )
       }
-      if (check_parallel_plot() & !quiet & count_mod_out > 0) {
+      if (check_parallel_plot() && !quiet && count_mod_out > 0) {
         cnt <- cnt + 1
         setTxtProgressBar(pbplot, cnt)
       }
       return(all_plots)
     }
-    if (!quiet & count_mod_out > 0) {
+    if (!quiet && count_mod_out > 0) {
       cnt <- cnt + length(uniqueSol)
       setTxtProgressBar(pbplot, cnt)
     }
   }
-  if (!quiet & count_mod_out > 0) close(pbplot)
+  if (!quiet && count_mod_out > 0) close(pbplot)
   # Stop cluster to avoid memory leaks
   if (check_parallel_plot()) stopImplicitCluster()
   return(invisible(parallelResult[[1]]))
@@ -860,9 +897,9 @@ refresh_plots_json <- function(OutputCollectRF, json_file, export = TRUE) {
     )
   dt_refreshDates <- data.frame(
     solID = names(chainData),
-    window_start = as.Date(sapply(chainData, function(x) x$InputCollect$window_start), origin = "1970-01-01"),
-    window_end = as.Date(sapply(chainData, function(x) x$InputCollect$window_end), origin = "1970-01-01"),
-    duration = unlist(c(0, sapply(chainData, function(x) x$InputCollect$refresh_steps)))
+    window_start = as.Date(unlist(lapply(chainData, function(x) x$InputCollect$window_start)), origin = "1970-01-01"),
+    window_end = as.Date(unlist(lapply(chainData, function(x) x$InputCollect$window_end)), origin = "1970-01-01"),
+    duration = unlist(c(0, unlist(lapply(chainData, function(x) x$InputCollect$refresh_steps))))
   ) %>%
     filter(.data$duration > 0) %>%
     mutate(refreshStatus = row_number()) %>%
@@ -929,23 +966,26 @@ refresh_plots_json <- function(OutputCollectRF, json_file, export = TRUE) {
     group_by(.data$solID, .data$label, .data$variable) %>%
     summarise_all(sum)
 
-  outputs[["pBarRF"]] <- pBarRF <- ggplot(df, aes(y = .data$variable)) +
+  outputs[["pBarRF"]] <- pBarRF <- df %>%
+    ggplot(aes(y = .data$variable)) +
     geom_col(aes(x = .data$decompPer)) +
-    geom_text(aes(
-      x = .data$decompPer,
-      label = formatNum(100 * .data$decompPer, signif = 2, pos = "%")
-    ),
-    na.rm = TRUE, hjust = -0.2, size = 2.8
+    geom_text(
+      aes(
+        x = .data$decompPer,
+        label = formatNum(100 * .data$decompPer, signif = 2, pos = "%")
+      ),
+      na.rm = TRUE, hjust = -0.2, size = 2.8
     ) +
     geom_point(aes(x = .data$performance), na.rm = TRUE, size = 2, colour = "#39638b") +
-    geom_text(aes(
-      x = .data$performance,
-      label = formatNum(.data$performance, 2)
-    ),
-    na.rm = TRUE, hjust = -0.4, size = 2.8, colour = "#39638b"
+    geom_text(
+      aes(
+        x = .data$performance,
+        label = formatNum(.data$performance, 2)
+      ),
+      na.rm = TRUE, hjust = -0.4, size = 2.8, colour = "#39638b"
     ) +
     facet_wrap(. ~ .data$label, scales = "free") +
-    scale_x_percent(limits = c(0, max(df$performance, na.rm = TRUE) * 1.2)) +
+    # scale_x_percent(limits = c(0, max(df$performance, na.rm = TRUE) * 1.2)) +
     labs(
       title = paste(
         "Model refresh: Decomposition & Paid Media",
